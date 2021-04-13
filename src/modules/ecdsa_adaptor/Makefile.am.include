@@ -1,0 +1,9 @@
+include_HEADERS += include/secp256k1_ecdsa_adaptor.h
+noinst_HEADERS += src/modules/ecdsa_adaptor/main_impl.h
+noinst_HEADERS += src/modules/ecdsa_adaptor/fischlin_impl.h
+noinst_HEADERS += src/modules/ecdsa_adaptor/tests_impl.h
+#if USE_BENCHMARK
+#noinst_PROGRAMS += bench_ecdsa_adaptor
+#bench_ecdsa_adaptor_SOURCES = src/bench_ecdsa_adaptor.c
+#bench_ecdsa_adaptor_LDADD = libsecp256k1.la $(SECP_LIBS) $(COMMON_LIB)
+#endif
