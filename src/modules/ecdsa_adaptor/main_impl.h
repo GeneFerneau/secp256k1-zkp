@@ -4,11 +4,22 @@
  * file COPYING or http://www.opensource.org/licenses/mit-license.php. *
  ***********************************************************************/
 
-#ifndef SECP256K1_MODULE_ECDSA_ADAPTOR_MAIN
-#define SECP256K1_MODULE_ECDSA_ADAPTOR_MAIN
+#ifndef _SECP256K1_MODULE_ECDSA_ADAPTOR_MAIN_
+#define _SECP256K1_MODULE_ECDSA_ADAPTOR_MAIN_
 
 #include "include/secp256k1.h"
 #include "include/secp256k1_ecdsa_adaptor.h"
+
+SECP256K1_INLINE secp256k1_ecdsa_pre_signature* secp256k1_ecdsa_pre_signature_create(void) {
+    secp256k1_ecdsa_pre_signature *p = (secp256k1_ecdsa_pre_signature *)checked_malloc(&default_error_callback, sizeof(secp256k1_ecdsa_pre_signature));
+    VERIFY_CHECK(p != NULL);
+    return p;
+}
+
+SECP256K1_INLINE void secp256k1_ecdsa_pre_signature_destroy(secp256k1_ecdsa_pre_signature *pre_sig) {
+    VERIFY_CHECK(pre_sig != NULL);
+    free(pre_sig);
+}
 
 SECP256K1_INLINE static void secp256k1_ecdsa_adaptor_tag_aux(unsigned char *r, unsigned char *msg, size_t msg_len) {
     secp256k1_sha256 sha;
@@ -306,43 +317,54 @@ SECP256K1_INLINE int secp256k1_ecdsa_pre_verify(const secp256k1_context *ctx, in
     return ret;
 }
 
-SECP256K1_INLINE int secp256k1_ecdsa_adapt(secp256k1_scalar *r, secp256k1_scalar *s, const secp256k1_ecdsa_pre_signature *pre_sig, const unsigned char *y) {
+SECP256K1_INLINE int secp256k1_ecdsa_adapt(unsigned char *sig64, const secp256k1_ecdsa_pre_signature *pre_sig, const unsigned char *y) {
+    secp256k1_scalar s;
     int ret = 1, overflow = 0;
 
-    VERIFY_CHECK(r != NULL);
-    VERIFY_CHECK(s != NULL);
+    VERIFY_CHECK(sig64 != NULL);
     VERIFY_CHECK(pre_sig != NULL);
     VERIFY_CHECK(y != NULL);
 
-    secp256k1_scalar_set_b32(s, y, &overflow);
-    ret &= !overflow && !secp256k1_scalar_is_zero(s) && !secp256k1_scalar_is_one(s);
+    secp256k1_scalar_set_b32(&s, y, &overflow);
+    ret &= !overflow && !secp256k1_scalar_is_zero(&s) && !secp256k1_scalar_is_one(&s);
 
-    secp256k1_scalar_inverse(s, s);
-    secp256k1_scalar_mul(s, s, &pre_sig->s);
-    secp256k1_scalar_cond_negate(s, secp256k1_scalar_is_high(s));
+    secp256k1_scalar_inverse(&s, &s);
+    secp256k1_scalar_mul(&s, &s, &pre_sig->s);
+    secp256k1_scalar_cond_negate(&s, secp256k1_scalar_is_high(&s));
 
-    memcpy(r, &pre_sig->r, sizeof(pre_sig->r));
+    secp256k1_scalar_get_b32(sig64, &pre_sig->r);
+    secp256k1_scalar_get_b32(sig64 + 32, &s);
+
+    secp256k1_scalar_clear(&s);
 
     return ret;
 }
 
-SECP256K1_INLINE int secp256k1_ecdsa_extract(const secp256k1_context* ctx, unsigned char *y, const secp256k1_scalar *r, const secp256k1_scalar *s, const secp256k1_ecdsa_pre_signature *pre_sig, const secp256k1_fischlin_proof *proof) {
-    int ret = 1, valid = 0, neg_valid = 0;
-    secp256k1_scalar yp, neg_yp, y_inv;
-    secp256k1_pubkey ypk, neg_ypk;
+SECP256K1_INLINE int secp256k1_ecdsa_extract(const secp256k1_context* ctx, unsigned char *y, const unsigned char *sig64, const secp256k1_ecdsa_pre_signature *pre_sig, const secp256k1_fischlin_proof *proof) {
+    secp256k1_scalar yp;
+    secp256k1_scalar neg_yp;
+    secp256k1_scalar y_inv;
+    secp256k1_scalar r;
+    secp256k1_scalar s;
+    secp256k1_pubkey ypk;
+    secp256k1_pubkey neg_ypk;
+    int ret = 1, valid = 0, neg_valid = 0, overflow = 0;
 
     VERIFY_CHECK(ctx != NULL);
     ARG_CHECK(y != NULL);
-    ARG_CHECK(r != NULL);
-    ARG_CHECK(s != NULL);
+    ARG_CHECK(sig64 != NULL);
     ARG_CHECK(pre_sig != NULL);
     ARG_CHECK(proof != NULL);
 
+    secp256k1_scalar_set_b32(&r, sig64, &overflow);
+    ret &= !overflow && secp256k1_scalar_eq(&r, &pre_sig->r);
+
     /* high `s` in the adapted signature is invalid */
-    ret &= !secp256k1_scalar_is_high(s);
+    secp256k1_scalar_set_b32(&s, sig64 + 32, &overflow);
+    ret &= !overflow && !secp256k1_scalar_is_high(&s);
 
     /* y = s^-1 * s' */
-    secp256k1_scalar_inverse(&yp, s);
+    secp256k1_scalar_inverse(&yp, &s);
     secp256k1_scalar_mul(&yp, &yp, &pre_sig->s);
 
     secp256k1_scalar_negate(&neg_yp, &yp);
@@ -353,6 +375,19 @@ SECP256K1_INLINE int secp256k1_ecdsa_extract(const secp256k1_context* ctx, unsig
     secp256k1_scalar_get_b32(y, &neg_yp);
     ret &= secp256k1_ec_pubkey_create(ctx, &neg_ypk, y);
 
+    /* verify both `Y` and `-Y`, in case `s` was negated during `adapt` phase
+     *
+     * FIXME:
+     *
+     * This reduces the security of the scheme by 1-bit, because a brute-force
+     * attacker now has half the search space to extract a valid `y`
+     *
+     * Is there any way to only check for exactly one value, and reject an
+     * incorrectly signed pre-sig `s` value?
+     *
+     * Are there any other security vulnerabilities opened by performing both
+     * checks?
+     */
     ret &= secp256k1_fischlin_verify(ctx, &valid, &ypk, proof);
     ret &= secp256k1_fischlin_verify(ctx, &neg_valid, &neg_ypk, proof);
 
@@ -365,6 +400,8 @@ SECP256K1_INLINE int secp256k1_ecdsa_extract(const secp256k1_context* ctx, unsig
     secp256k1_scalar_clear(&yp);
     secp256k1_scalar_clear(&neg_yp);
     secp256k1_scalar_clear(&y_inv);
+    secp256k1_scalar_clear(&r);
+    secp256k1_scalar_clear(&s);
 
     return ret & (valid | neg_valid);
 }

@@ -88,11 +88,31 @@ typedef struct {
     secp256k1_chaum_pedersen_proof proof;
 } secp256k1_ecdsa_pre_signature;
 
+/** Allocate memory for an ECDSA pre-signature
+ */
+SECP256K1_API secp256k1_ecdsa_pre_signature* secp256k1_ecdsa_pre_signature_create(void) SECP256K1_WARN_UNUSED_RESULT;
+
+/** Destroy an ECDSA pre-signature created with secp256k1_ecdsa_pre_signature_create
+ */
+SECP256K1_API void secp256k1_ecdsa_pre_signature_destroy(secp256k1_ecdsa_pre_signature *pre_sig) SECP256K1_ARG_NONNULL(1);
+
+/** Allocate memory for a Fischlin NIZK proof
+ */
+SECP256K1_API secp256k1_fischlin_proof* secp256k1_fischlin_proof_create(void) SECP256K1_WARN_UNUSED_RESULT;
+
 /** Initialize a Fischlin proof with default values
+ *
+ * Useful if the proof was not created using secp256k1_fischlin_proof_create
  */
 SECP256K1_API int secp256k1_fischlin_proof_init(secp256k1_fischlin_proof *proof) SECP256K1_ARG_NONNULL(1) SECP256K1_WARN_UNUSED_RESULT;
 
-/** Destroy a Fischlin proof
+/** Free the memory for the inner pointers of the Fischlin proof
+ */
+SECP256K1_API void secp256k1_fischlin_proof_deinit(secp256k1_fischlin_proof *proof) SECP256K1_ARG_NONNULL(1);
+
+/** Destroy a Fischlin proof created with secp256k1_fischlin_proof_create
+ *
+ * Frees the inner pointers and the proof pointer
  */
 SECP256K1_API void secp256k1_fischlin_proof_destroy(secp256k1_fischlin_proof *proof) SECP256K1_ARG_NONNULL(1);
 
@@ -146,6 +166,27 @@ SECP256K1_API int secp256k1_fischlin_verify(
     const secp256k1_pubkey *pubkey,
     const secp256k1_fischlin_proof *proof
 ) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_WARN_UNUSED_RESULT;
+
+SECP256K1_API int secp256k1_ecdsa_consistency_prove(
+    const secp256k1_context *ctx,
+    secp256k1_chaum_pedersen_proof *proof,
+    const secp256k1_pubkey *ypk,
+    const unsigned char *sk,
+    const secp256k1_scalar *rand,
+    const unsigned char *msg,
+    size_t msg_len
+) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4) SECP256K1_ARG_NONNULL(5) SECP256K1_ARG_NONNULL(6) SECP256K1_WARN_UNUSED_RESULT;
+
+SECP256K1_API int secp256k1_ecdsa_consistency_verify(
+    const secp256k1_context *ctx,
+    int *r,
+    const secp256k1_pubkey *ypk,
+    const secp256k1_pubkey *kp,
+    const secp256k1_pubkey *ky,
+    const secp256k1_chaum_pedersen_proof *proof,
+    const unsigned char *msg,
+    size_t msg_len
+) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4) SECP256K1_ARG_NONNULL(5) SECP256K1_ARG_NONNULL(6) SECP256K1_ARG_NONNULL(7) SECP256K1_WARN_UNUSED_RESULT;
 
 /** Initial phase of creating an ECDSA adaptor signature
  *
@@ -208,11 +249,10 @@ SECP256K1_API int secp256k1_ecdsa_pre_verify(
  *             y: adaptor witness to adapt the pre-signature
  */
 SECP256K1_API int secp256k1_ecdsa_adapt(
-    secp256k1_scalar *r,
-    secp256k1_scalar *s,
+    unsigned char *sig64,
     const secp256k1_ecdsa_pre_signature *pre_sig,
     const unsigned char *y
-) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4) SECP256K1_WARN_UNUSED_RESULT;
+) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_WARN_UNUSED_RESULT;
 
 /** Extract a witness `y` from an adaptor signature and pre-signature
  * 
@@ -228,11 +268,10 @@ SECP256K1_API int secp256k1_ecdsa_adapt(
 SECP256K1_API int secp256k1_ecdsa_extract(
     const secp256k1_context *ctx,
     unsigned char *y,
-    const secp256k1_scalar *r,
-    const secp256k1_scalar *s,
+    const unsigned char *sig64,
     const secp256k1_ecdsa_pre_signature *pre_sig,
     const secp256k1_fischlin_proof *proof
-) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4) SECP256K1_ARG_NONNULL(5) SECP256K1_ARG_NONNULL(6) SECP256K1_WARN_UNUSED_RESULT;
+) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4) SECP256K1_ARG_NONNULL(5) SECP256K1_WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus
 }

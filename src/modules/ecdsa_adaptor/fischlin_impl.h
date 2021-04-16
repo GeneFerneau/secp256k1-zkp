@@ -4,11 +4,20 @@
  * file COPYING or http://www.opensource.org/licenses/mit-license.php. *
  ***********************************************************************/
 
-#ifndef SECP256K1_MODULE_ECDSA_ADAPTOR_FISCHLIN
-#define SECP256K1_MODULE_ECDSA_ADAPTOR_FISCHLIN
+#ifndef _SECP256K1_MODULE_ECDSA_ADAPTOR_FISCHLIN_
+#define _SECP256K1_MODULE_ECDSA_ADAPTOR_FISCHLIN_
 
 #include "include/secp256k1.h"
 #include "include/secp256k1_ecdsa_adaptor.h"
+
+SECP256K1_INLINE secp256k1_fischlin_proof* secp256k1_fischlin_proof_create(void) {
+    secp256k1_fischlin_proof *p = (secp256k1_fischlin_proof *)checked_malloc(&default_error_callback, sizeof(secp256k1_fischlin_proof));
+    VERIFY_CHECK(p != NULL);
+    if (secp256k1_fischlin_proof_init(p) == 0) {
+        secp256k1_fischlin_proof_destroy(p);
+    }
+    return p;
+}
 
 int secp256k1_fischlin_proof_init(secp256k1_fischlin_proof *proof) {
     int ret = 1;
@@ -24,7 +33,7 @@ int secp256k1_fischlin_proof_init(secp256k1_fischlin_proof *proof) {
     return ret;
 }
 
-void secp256k1_fischlin_proof_destroy(secp256k1_fischlin_proof *proof) {
+void secp256k1_fischlin_proof_deinit(secp256k1_fischlin_proof *proof) {
     VERIFY_CHECK(proof != NULL);
 
     if (proof->coms) {
@@ -36,6 +45,13 @@ void secp256k1_fischlin_proof_destroy(secp256k1_fischlin_proof *proof) {
     if (proof->resps) {
         free(proof->resps);
     }
+}
+
+void secp256k1_fischlin_proof_destroy(secp256k1_fischlin_proof *proof) {
+    VERIFY_CHECK(proof != NULL);
+
+    secp256k1_fischlin_proof_deinit(proof);
+    free(proof);
 }
 
 SECP256K1_INLINE static int secp256k1_fischlin_schnorr_prove(secp256k1_fischlin_response *r, const secp256k1_scalar *seckey, const secp256k1_scalar *rand, const secp256k1_fischlin_challenge *chal) {
